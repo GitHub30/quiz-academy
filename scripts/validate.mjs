@@ -46,6 +46,7 @@ for (const q of QUESTIONS) {
       ok(/^[\x20-\x7e]+$/.test(q.a[0]), `${at} タイピングの正解は半角`);
       break;
     case 'anagram':
+      ok(/^[\x21-\x7e]+$/.test(q.a), `${at} 文字パネルは半角`);
       ok(typeof q.a === 'string' && q.a.length >= 4 && q.a.length <= 14 && new Set(q.a).size > 1, `${at} a`);
       break;
   }

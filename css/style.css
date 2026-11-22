@@ -126,6 +126,8 @@ button:disabled { cursor: default; }
 .timer .bar > i.low { background: var(--bad); }
 .timer-num { width: 2.2em; text-align: right; font-variant-numeric: tabular-nums; font-weight: 700; }
 
+.qtext:focus { outline: none; }
+noscript p { padding: 24px; }
 .qtext { font-size: 1.08rem; font-weight: 600; margin: 12px 0 14px !important; }
 .hint-line { color: var(--muted); font-size: .85rem; margin: 0 0 8px !important; }
 

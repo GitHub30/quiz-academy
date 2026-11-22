@@ -49,9 +49,15 @@ self.addEventListener('fetch', (event) => {
     // ナビゲーションはクエリ違いでも index.html で応答できるようにする
     const key = req.mode === 'navigate' ? './index.html' : req;
     const network = fetch(req).then((res) => {
-      if (res.ok && res.type === 'basic') cache.put(key, res.clone()).catch(() => {});
+      if (res.ok && res.type === 'basic' && !res.redirected) {
+        // アプリ本体以外(manifest などを直接開いた場合)を index.html として保存しない
+        const isHtml = (res.headers.get('content-type') || '').includes('text/html');
+        if (req.mode !== 'navigate') cache.put(req, res.clone()).catch(() => {});
+        else if (isHtml) cache.put(key, res.clone()).catch(() => {});
+      }
       return res;
     });
+    network.catch(() => {}); // タイムアウト後に失敗しても未処理の拒否にしない
     try {
       const res = await Promise.race([network, timeout(4000)]);
       if (res.ok) return res;

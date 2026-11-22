@@ -149,7 +149,8 @@ function show(node) {
 }
 
 document.addEventListener('keydown', (e) => {
-  if (e.isComposing || e.ctrlKey || e.metaKey || e.altKey) return;
+  // 押しっぱなしの連続入力と、IME 変換確定の Enter(Safari は isComposing が false になる)は無視する
+  if (e.repeat || e.isComposing || e.keyCode === 229 || e.ctrlKey || e.metaKey || e.altKey) return;
   if (keyHandler) keyHandler(e);
 });
 
@@ -264,9 +265,17 @@ function ask(token, p, { index, total, label, time, scoreText }) {
     const q = p.q;
     const dom = domainOf(q.d);
     const limit = (time || p.time) * 1000;
-    const start = performance.now();
+    const INPUT_GUARD = 300; // 直前の問題へのダブルタップが次の問題の解答にならないようにする
+    const shownAt = performance.now();
+    let last = shownAt;
+    let elapsed = 0; // タブが裏に回っている間や確認ダイアログ表示中は進めない
     let finished = false;
     let raf = 0;
+    const advance = () => {
+      const now = performance.now();
+      elapsed += Math.min(250, now - last);
+      last = now;
+    };
 
     const timerFill = h('i');
     const timerNum = h('span', { class: 'timer-num', 'aria-hidden': 'true' }, String(Math.ceil(limit / 1000)));
@@ -277,16 +286,17 @@ function ask(token, p, { index, total, label, time, scoreText }) {
         h('span', { class: 'chip type' }, TYPES[p.type].label),
         h('span', { class: 'qcount' }, `${index + 1} / ${total}`)),
       h('div', { class: 'timer' }, h('div', { class: 'bar' }, timerFill), timerNum),
-      h('p', { class: 'qtext', id: 'qtext' }, q.q),
+      h('p', { class: 'qtext', id: 'qtext', tabindex: '-1' }, q.q),
       body);
 
     const finish = (answer, timedOut = false) => {
       if (finished) return;
+      if (!timedOut && performance.now() - shownAt < INPUT_GUARD) return;
+      advance();
       finished = true;
       cancelAnimationFrame(raf);
       cleanup = null;
       keyHandler = null;
-      const elapsed = performance.now() - start;
       const ratio = timedOut ? 0 : Math.max(0, 1 - elapsed / limit);
       const correct = !timedOut && judge(p, answer);
       for (const el of body.querySelectorAll('button, input')) el.disabled = true;
@@ -295,7 +305,8 @@ function ask(token, p, { index, total, label, time, scoreText }) {
 
     const tick = () => {
       if (finished) return;
-      const remain = Math.max(0, limit - (performance.now() - start));
+      advance();
+      const remain = Math.max(0, limit - elapsed);
       const r = remain / limit;
       timerFill.style.width = `${r * 100}%`;
       timerFill.classList.toggle('low', r < 0.25);
@@ -324,7 +335,7 @@ function ask(token, p, { index, total, label, time, scoreText }) {
       reject(new Aborted());
     };
     keyHandler = ui.onKey || null;
-    if (ui.focus) ui.focus.focus({ preventScroll: true });
+    (ui.focus || card.querySelector('#qtext')).focus({ preventScroll: true });
     raf = requestAnimationFrame(tick);
   });
 }
@@ -500,7 +511,9 @@ function buildAnswerUI(p, finish, setHintRevealer) {
           if (e.key === 'Backspace') { used.pop(); paint(); return; }
           if (e.key === 'Enter' && !ok.disabled) { ok.click(); return; }
           if (e.key.length !== 1) return;
-          const i = p.tiles.findIndex((ch, idx) => !used.includes(idx) && ch.toLowerCase() === e.key.toLowerCase());
+          // 大文字・小文字が一致するタイルを優先する(CLAUDE.md の D と d など)
+          let i = p.tiles.findIndex((ch, idx) => !used.includes(idx) && ch === e.key);
+          if (i < 0) i = p.tiles.findIndex((ch, idx) => !used.includes(idx) && ch.toLowerCase() === e.key.toLowerCase());
           if (i >= 0) { used.push(i); paint(); }
         },
       };
@@ -595,7 +608,7 @@ async function tournament(token) {
         h('p', null, round.advance ? `${players.length} 人中 上位 ${round.advance} 人が通過(全 ${round.n} 問)` : `${players.length} 人で優勝を争う(全 ${round.n} 問)`),
         h('ul', { class: 'entrants' }, players.map((pl) => h('li', { class: pl.me ? 'me' : '' }, `${pl.avatar} ${pl.name}`)))),
       go));
-    await waitButton(token, go);
+    await waitButton(token, go, 400);
     guard(token);
 
     const scores = new Map(players.map((pl) => [pl.id, 0]));
@@ -641,7 +654,7 @@ async function tournament(token) {
       h('div', { class: 'card center' }, h('p', { class: 'round-name' }, `${mine.place} 位で通過!`)),
       h('div', { class: 'card' }, board(ranked, { cut: round.advance })),
       next));
-    await waitButton(token, next);
+    await waitButton(token, next, 400);
     guard(token);
     const ids = new Set(ranked.filter((r) => r.place <= round.advance).map((r) => r.id));
     players = players.filter((pl) => ids.has(pl.id));
@@ -761,7 +774,7 @@ async function exam(token) {
         h('span', null, `${d.icon} ${d.name}`), h('b', null, `${alloc[d.id]} 問(${d.weight}%)`)))),
       h('p', { class: 'hint-line' }, `1000 点満点に換算し、${PASS_SCORE} 点以上で合格。1 問 60 秒。`)),
     go));
-  await waitButton(token, go);
+  await waitButton(token, go, 400);
   guard(token);
 
   let qs = [];

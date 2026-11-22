@@ -41,6 +41,7 @@ async function answer({ wrong = false } = {}) {
   answered.add(q.id);
   if (shots && !answer.shot?.has(q.t)) { (answer.shot ??= new Set()).add(q.t); await shot(`q-${q.t}`); }
   await noOverflow(q.id);
+  await page.waitForTimeout(320); // 表示直後の誤入力ガードを待つ
   switch (q.t) {
     case 'ox': await page.click((q.a !== wrong) ? '.ox.maru' : '.ox.batsu'); break;
     case 'choice': case 'assoc': await optByText('.opts', q.c[wrong ? 1 : 0]).click(); break;
@@ -58,6 +59,7 @@ async function answer({ wrong = false } = {}) {
       await page.click('.ok'); break;
     case 'type': await page.fill('.type-input', q.a[0]); await page.keyboard.press('Enter'); break;
     case 'anagram':
+      if (q.id === 'd3-23') { await page.keyboard.type(q.a, { delay: 20 }); await page.keyboard.press('Enter'); break; } // キーボード入力(大文字・小文字の区別)
       for (const ch of q.a) await page.locator('.tile:not([disabled])').filter({ hasText: new RegExp(`^${ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`) }).first().click();
       await page.click('.ok'); break;
   }
@@ -121,11 +123,12 @@ await page.waitForSelector('.modes');
 await page.locator('.mode').nth(0).click();
 await shot('tournament-intro');
 for (const n of [5, 5, 6]) {
+  await page.waitForTimeout(420);
   await page.getByRole('button', { name: '始める', exact: true }).click();
   for (let i = 0; i < n; i++) {
     if (n === 5 && i === 0) { await answer(); await shot(`tournament-feedback`); await page.waitForTimeout(420); await page.locator('.result .btn.primary').click(); } else await answerWithFeedback();
   }
-  if (n === 5) { await page.waitForSelector('text=位で通過'); await shot('tournament-round'); await page.locator('.btn.primary').click(); }
+  if (n === 5) { await page.waitForSelector('text=位で通過'); await shot('tournament-round'); await page.waitForTimeout(420); await page.locator('.btn.primary').click(); }
 }
 await page.waitForSelector('text=トーナメント結果');
 await noOverflow('tournament result');
@@ -136,6 +139,19 @@ assert.match(await page.locator('.round-name').innerText(), /優勝|決勝 \d �
 await home();
 await page.locator('.mode').nth(2).click();
 await shot('exam-intro');
+await page.waitForTimeout(420);
+await page.getByRole('button', { name: '検定を始める' }).click();
+// ダブルクリックや押しっぱなしで複数の問題に答えてしまわないこと
+await page.waitForSelector('.qtext');
+await page.waitForTimeout(320);
+for (const k of ['1', '2', 'o', 'x']) for (let r = 0; r < 4; r++) await page.keyboard.down(k);
+for (const k of ['1', '2', 'o', 'x']) await page.keyboard.up(k);
+await page.locator('.opt, .ox, .tile').first().dblclick().catch(() => {});
+const n = Number((await page.locator('.qcount').innerText()).split('/')[0]);
+assert.ok(n <= 3, `連続入力で ${n} 問目まで進んだ`);
+await home();
+await page.locator('.mode').nth(2).click();
+await page.waitForTimeout(420);
 await page.getByRole('button', { name: '検定を始める' }).click();
 for (let i = 0; i < 20; i++) await answer();
 await page.waitForSelector('.exam-score');

@@ -3,7 +3,6 @@
   "short_name": "Quiz Academy",
   "description": "Claude 認定の出題分野をクイズとトーナメントで学ぶ非公式の学習ゲーム",
   "lang": "ja",
-  "id": "./",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

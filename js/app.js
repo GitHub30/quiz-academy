@@ -26,6 +26,51 @@ function h(tag, props, ...children) {
   return el;
 }
 
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svg(tag, attrs, ...children) {
+  const el = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs || {})) el.setAttribute(k, String(v));
+  el.append(...children);
+  return el;
+}
+
+// 学院の案内役「ホゥ教授」(オリジナルのフクロウ)。mood: think / happy / sad
+function owl(mood = 'think') {
+  const eye = (cx) => {
+    if (mood === 'happy') return [svg('path', { d: `M${cx - 9} 60 q9 -12 18 0`, class: 'owl-line' })];
+    const dy = mood === 'sad' ? 4 : -2;
+    const dx = mood === 'sad' ? 0 : 3;
+    return [
+      svg('circle', { cx, cy: 58, r: 14, class: 'owl-eye' }),
+      svg('circle', { cx: cx + dx, cy: 58 + dy, r: 6, class: 'owl-pupil' }),
+      svg('circle', { cx: cx + dx + 2, cy: 56 + dy, r: 2, class: 'owl-eye' }),
+    ];
+  };
+  return svg('svg', { viewBox: '0 0 120 120', class: `owl-svg ${mood}`, 'aria-hidden': 'true' },
+    svg('path', { d: 'M28 44 L22 22 L44 36 Z M92 44 L98 22 L76 36 Z', class: 'owl-body' }),
+    svg('ellipse', { cx: 60, cy: 72, rx: 40, ry: 42, class: 'owl-body' }),
+    svg('ellipse', { cx: 60, cy: 86, rx: 24, ry: 24, class: 'owl-belly' }),
+    svg('path', { d: 'M20 70 q-10 22 6 36 q4 -20 -6 -36 Z M100 70 q10 22 -6 36 q-4 -20 6 -36 Z', class: 'owl-wing' }),
+    ...eye(44), ...eye(76),
+    mood === 'sad' ? svg('path', { d: 'M30 40 l22 6 M90 40 l-22 6', class: 'owl-line' }) : svg('g', {}),
+    svg('path', { d: 'M54 66 L66 66 L60 78 Z', class: 'owl-beak' }),
+    svg('path', { d: 'M60 8 L100 22 L60 36 L20 22 Z', class: 'owl-cap' }),
+    svg('path', { d: 'M40 29 v10 q20 10 40 0 v-10 L60 36 Z', class: 'owl-cap2' }),
+    svg('path', { d: 'M100 22 v18', class: 'owl-tassel' }),
+    svg('circle', { cx: 100, cy: 42, r: 4, class: 'owl-beak' }));
+}
+
+function confetti() {
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const colors = ['#f5c451', '#ff8fa3', '#7fd8ff', '#8fe388', '#c9a0ff'];
+  const box = h('div', { class: 'confetti', 'aria-hidden': 'true' },
+    Array.from({ length: 44 }, (_, i) => h('i', {
+      style: `left:${Math.random() * 100}%;background:${colors[i % colors.length]};animation-delay:${(Math.random() * 0.6).toFixed(2)}s;animation-duration:${(1.8 + Math.random() * 1.4).toFixed(2)}s`,
+    })));
+  document.body.append(box);
+  setTimeout(() => box.remove(), 4000);
+}
+
 const domainOf = (id) => DOMAINS.find((d) => d.id === id);
 
 // ───────────── 保存データ ─────────────
@@ -126,6 +171,10 @@ const sfx = {
   tap: () => tone([520], 0.04, 'square', 0.025),
   fanfare: () => tone([523, 659, 784, 1047, 1319], 0.16),
 };
+function celebrate() {
+  sfx.fanfare();
+  confetti();
+}
 
 // ───────────── 画面遷移 ─────────────
 // 画面ごとの後始末(タイマー停止など)と、進行中セッションの中断管理
@@ -142,6 +191,7 @@ function show(node) {
     c();
   }
   keyHandler = null;
+  document.body.dataset.d = node.getAttribute('data-d') || '0'; // 背景の色合いを分野に合わせる
   app.replaceChildren(node);
   window.scrollTo(0, 0);
   const focus = node.querySelector('[data-autofocus]');
@@ -239,15 +289,16 @@ function homeScreen() {
     ['📊', '成績と設定', '分野別の正答率・階級・プレイヤー名', () => show(statsScreen())],
   ];
   return h('div', { class: 'screen home' },
-    header('Quiz Academy', { back: false }),
+    header('', { back: false }),
+    h('div', { class: 'logo' }, h('span', { class: 'logo-main' }, 'Quiz Academy'), h('span', { class: 'logo-sub' }, '— Claude 認定 対策クイズ学院 —')),
     h('section', { class: 'hero' },
-      h('div', { class: 'owl', 'aria-hidden': 'true' }, '🦉'),
+      h('div', { class: 'owl' }, owl('happy')),
       h('div', null,
         h('p', { class: 'hero-title' }, 'Claude 認定 対策クイズ学院'),
         h('p', { class: 'hero-sub' }, `ようこそ、${save.name} さん。全 ${QUESTIONS.length} 問・8 形式で腕試し。`))),
     rankBadge(),
     h('nav', { class: 'modes' }, modes.map(([icon, title, desc, fn], i) =>
-      h('button', { class: 'mode', onclick: () => { sfx.tap(); fn(); }, 'data-autofocus': i === 0 ? true : null },
+      h('button', { class: `mode m${i}`, onclick: () => { sfx.tap(); fn(); }, 'data-autofocus': i === 0 ? true : null },
         h('span', { class: 'mode-icon', 'aria-hidden': 'true' }, icon),
         h('span', { class: 'mode-text' }, h('b', null, title), h('small', null, desc))))),
     h('p', { class: 'note' },
@@ -259,7 +310,7 @@ function homeScreen() {
  * 1 問を出題し、解答を受け付ける。
  * 戻り値: { correct, ratio(残り時間の割合), timedOut, card, body }
  */
-function ask(token, p, { index, total, label, time, scoreText }) {
+function ask(token, p, { index, total, label, time, scoreText, rivals = [] }) {
   guard(token);
   return new Promise((resolve, reject) => {
     const q = p.q;
@@ -277,16 +328,48 @@ function ask(token, p, { index, total, label, time, scoreText }) {
       last = now;
     };
 
-    const timerFill = h('i');
+    // 円形タイマー
+    const R = 25;
+    const CIRC = 2 * Math.PI * R;
+    const arc = svg('circle', { class: 'ring-arc', cx: 30, cy: 30, r: R, 'stroke-dasharray': CIRC.toFixed(2), transform: 'rotate(-90 30 30)' });
     const timerNum = h('span', { class: 'timer-num', 'aria-hidden': 'true' }, String(Math.ceil(limit / 1000)));
+    const timer = h('div', { class: 'timer' },
+      svg('svg', { viewBox: '0 0 60 60', 'aria-hidden': 'true' }, svg('circle', { class: 'ring-bg', cx: 30, cy: 30, r: R }), arc),
+      timerNum);
+
+    // ライバルの解答状況(解答を済ませるとランプが点く。正誤は自分の解答後に公開)
+    const lit = rivals.map(() => false);
+    const rivalEls = rivals.map(({ pl }) => h('li', { class: 'rival' },
+      h('span', { class: 'rv-av', 'aria-hidden': 'true' }, pl.avatar),
+      h('span', { class: 'rv-name' }, pl.name),
+      h('span', { class: 'rv-lamp', 'aria-hidden': 'true' }, '…')));
+    const strip = rivals.length ? h('ol', { class: 'rivals', 'aria-label': 'ライバル' }, rivalEls) : null;
+    const lightUp = (progress) => {
+      rivals.forEach((rv, i) => {
+        if (lit[i] || progress < 1 - rv.r.ratio) return;
+        lit[i] = true;
+        rivalEls[i].classList.add('done');
+        rivalEls[i].lastChild.textContent = '済';
+      });
+    };
+    const revealRivals = () => {
+      rivals.forEach((rv, i) => {
+        rivalEls[i].classList.add('done', rv.r.correct ? 'ok' : 'ng');
+        rivalEls[i].lastChild.textContent = rv.r.correct ? '○' : '×';
+      });
+    };
+
+    const mascot = h('div', { class: 'mascot' }, owl('think'));
     const body = h('div', { class: 'answer-area' });
-    const card = h('div', { class: 'card qcard' },
+    const card = h('div', { class: 'card qcard', style: `--dc:${dom.color}` },
       h('div', { class: 'qmeta' },
+        h('span', { class: 'qno' }, `第 ${index + 1} 問`),
         h('span', { class: 'chip', style: `--c:${dom.color}` }, `${dom.icon} ${dom.short}`),
         h('span', { class: 'chip type' }, TYPES[p.type].label),
         h('span', { class: 'qcount' }, `${index + 1} / ${total}`)),
-      h('div', { class: 'timer' }, h('div', { class: 'bar' }, timerFill), timerNum),
-      h('p', { class: 'qtext', id: 'qtext', tabindex: '-1' }, q.q),
+      h('div', { class: 'qboard' },
+        h('p', { class: 'qtext', id: 'qtext', tabindex: '-1' }, q.q),
+        timer, mascot),
       body);
 
     const finish = (answer, timedOut = false) => {
@@ -300,7 +383,9 @@ function ask(token, p, { index, total, label, time, scoreText }) {
       const ratio = timedOut ? 0 : Math.max(0, 1 - elapsed / limit);
       const correct = !timedOut && judge(p, answer);
       for (const el of body.querySelectorAll('button, input')) el.disabled = true;
-      resolve({ correct, ratio, timedOut, card, body, answer });
+      timer.classList.add('stopped');
+      revealRivals();
+      resolve({ correct, ratio, timedOut, card, body, answer, mascot });
     };
 
     const tick = () => {
@@ -308,11 +393,12 @@ function ask(token, p, { index, total, label, time, scoreText }) {
       advance();
       const remain = Math.max(0, limit - elapsed);
       const r = remain / limit;
-      timerFill.style.width = `${r * 100}%`;
-      timerFill.classList.toggle('low', r < 0.25);
+      arc.style.strokeDashoffset = String(CIRC * (1 - r));
+      timer.classList.toggle('low', r < 0.25);
       timerNum.textContent = String(Math.ceil(remain / 1000));
       if (remain <= 0) return finish(null, true);
       if (p.type === 'assoc') revealHints(1 - r);
+      lightUp(1 - r);
       raf = requestAnimationFrame(tick);
     };
 
@@ -320,14 +406,15 @@ function ask(token, p, { index, total, label, time, scoreText }) {
     const ui = buildAnswerUI(p, finish, (fn) => { revealHints = fn; });
     body.append(ui.node);
 
-    show(h('div', { class: 'screen play' },
-      h('header', { class: 'topbar' },
+    show(h('div', { class: `screen play${strip ? ' has-rivals' : ''}`, 'data-d': q.d },
+      h('header', { class: 'topbar hud' },
         h('button', {
           class: 'icon-btn', 'aria-label': '中断してホームへ戻る',
           onclick: () => { if (confirm('中断してホームへ戻りますか?')) goHome(); },
         }, '✕'),
-        h('h1', null, label),
+        h('h1', null, h('span', { class: 'ribbon' }, label)),
         h('span', { class: 'score-pill' }, scoreText || '')),
+      strip,
       card));
     cleanup = () => {
       finished = true;
@@ -545,6 +632,8 @@ function markOptions(p, res) {
 async function feedback(token, p, res, { points, extra, nextLabel = '次へ' }) {
   guard(token);
   markOptions(p, res);
+  res.mascot.replaceChildren(owl(res.correct ? 'happy' : 'sad'));
+  res.card.classList.add(res.correct ? 'is-good' : 'is-bad');
   if (res.correct) sfx.ok(); else sfx.ng();
   const next = h('button', { class: 'btn primary', 'data-autofocus': true }, nextLabel);
   const panel = h('div', { class: `result ${res.correct ? 'good' : 'bad'}`, role: 'status' },
@@ -602,7 +691,8 @@ async function tournament(token) {
     const go = h('button', { class: 'btn primary', 'data-autofocus': true }, '始める');
     show(h('div', { class: 'screen' },
       header(`学院トーナメント`),
-      h('div', { class: 'card center' },
+      h('div', { class: 'card center intro' },
+        h('div', { class: 'owl big' }, owl('think')),
         h('p', { class: 'round-name' }, round.name),
         h('p', { class: 'round-theme' }, theme ? `${theme.icon} ${theme.name}` : '🌟 全分野総合'),
         h('p', null, round.advance ? `${players.length} 人中 上位 ${round.advance} 人が通過(全 ${round.n} 問)` : `${players.length} 人で優勝を争う(全 ${round.n} 問)`),
@@ -614,16 +704,15 @@ async function tournament(token) {
     const scores = new Map(players.map((pl) => [pl.id, 0]));
     for (let i = 0; i < qs.length; i++) {
       const p = prepare(qs[i]);
+      const rivals = players.filter((pl) => !pl.me).map((pl) => ({ pl, r: simulateCpu(pl, p) }));
       const res = await ask(token, p, {
-        index: i, total: qs.length, label: round.name, scoreText: `${scores.get('me')} 点`,
+        index: i, total: qs.length, label: round.name, scoreText: `${scores.get('me')} 点`, rivals,
       });
       const pts = speedScore(res.correct, res.ratio);
       scores.set('me', scores.get('me') + pts);
       totalPoints += pts;
       let cpuOk = 0;
-      for (const pl of players) {
-        if (pl.me) continue;
-        const r = simulateCpu(pl, p);
+      for (const { pl, r } of rivals) {
         if (r.correct) cpuOk++;
         scores.set(pl.id, scores.get(pl.id) + r.points);
       }
@@ -647,7 +736,7 @@ async function tournament(token) {
       await finishTournament(token, ranked, { round, placement, totalPoints, isFinal });
       return;
     }
-    sfx.fanfare();
+    celebrate();
     const next = h('button', { class: 'btn primary', 'data-autofocus': true }, `${ROUNDS[ri + 1].name}へ進む`);
     show(h('div', { class: 'screen' },
       header(`${round.name} 結果`),
@@ -672,7 +761,7 @@ async function finishTournament(token, ranked, { round, placement, totalPoints, 
   if (won) save.wins++;
   persist();
   const after = rankOf(save.xp);
-  if (won || after.index > before.index) sfx.fanfare();
+  if (won || after.index > before.index) celebrate();
 
   const title = won ? '🏆 優勝!' : isFinal ? `決勝 ${placement} 位` : `${round.name}敗退(${placement} 位)`;
   show(h('div', { class: 'screen' },
@@ -747,7 +836,7 @@ async function practice(token, qs) {
   save.xp += gained;
   persist();
   const after = rankOf(save.xp);
-  if (after.index > before.index) sfx.fanfare();
+  if (after.index > before.index) celebrate();
   show(h('div', { class: 'screen' },
     header('修練の結果'),
     h('div', { class: 'card center' },
@@ -799,7 +888,7 @@ async function exam(token) {
   save.bestExam = Math.max(save.bestExam, score);
   persist();
   const after = rankOf(save.xp);
-  if (pass) sfx.fanfare(); else sfx.ng();
+  if (pass) celebrate(); else sfx.ng();
 
   show(h('div', { class: 'screen' },
     header('模擬検定の結果'),

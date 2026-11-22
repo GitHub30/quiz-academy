@@ -142,34 +142,116 @@ function recordAnswer(q, correct) {
 }
 
 // ───────────── 効果音 ─────────────
+// すべて Web Audio で合成する(音声ファイルなし・オフラインでも鳴る)
 let actx = null;
-function tone(freqs, dur = 0.12, type = 'triangle', gain = 0.06) {
-  if (!save.sound) return;
+let master = null;
+let noiseBuf = null;
+
+function audio() {
+  if (!save.sound) return null;
   try {
-    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
-    if (actx.state === 'suspended') actx.resume();
-    let t = actx.currentTime;
-    for (const f of freqs) {
-      const o = actx.createOscillator();
-      const g = actx.createGain();
-      o.type = type;
-      o.frequency.value = f;
-      g.gain.setValueAtTime(gain, t);
-      g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-      o.connect(g).connect(actx.destination);
-      o.start(t);
-      o.stop(t + dur);
-      t += dur * 0.85;
+    if (!actx) {
+      actx = new (window.AudioContext || window.webkitAudioContext)();
+      const comp = actx.createDynamicsCompressor(); // 重なっても音割れしないように
+      master = actx.createGain();
+      master.gain.value = 0.5;
+      master.connect(comp).connect(actx.destination);
+      noiseBuf = actx.createBuffer(1, actx.sampleRate * 0.5, actx.sampleRate);
+      const data = noiseBuf.getChannelData(0);
+      for (let k = 0; k < data.length; k++) data[k] = Math.random() * 2 - 1;
     }
+    if (actx.state === 'suspended') actx.resume();
+    return actx;
   } catch {
-    /* 音が出せなくても続行 */
+    return null; // 音が出せなくても続行
   }
 }
+
+// 1 音鳴らす。at: 開始までの秒数 / to: 終わりの周波数(滑らかに変化)
+function note(freq, { at = 0, dur = 0.12, type = 'sine', gain = 0.2, to = 0, attack = 0.005 } = {}) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + at;
+  const o = ac.createOscillator();
+  const g = ac.createGain();
+  o.type = type;
+  o.frequency.setValueAtTime(freq, t);
+  if (to) o.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + attack);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g).connect(master);
+  o.start(t);
+  o.stop(t + dur + 0.02);
+}
+
+// ノイズ(シュッ、キラッ という質感)。from → to へフィルターを動かす
+function swish({ at = 0, dur = 0.18, gain = 0.12, from = 800, to = 6000, q = 1.2 } = {}) {
+  const ac = audio();
+  if (!ac) return;
+  const t = ac.currentTime + at;
+  const src = ac.createBufferSource();
+  const f = ac.createBiquadFilter();
+  const g = ac.createGain();
+  src.buffer = noiseBuf;
+  f.type = 'bandpass';
+  f.Q.value = q;
+  f.frequency.setValueAtTime(from, t);
+  f.frequency.exponentialRampToValueAtTime(to, t + dur);
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(gain, t + dur * 0.3);
+  g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  src.connect(f).connect(g).connect(master);
+  src.start(t);
+  src.stop(t + dur + 0.02);
+}
+
+const SCALE = [0, 2, 4, 7, 9, 12, 14, 16, 19, 21, 24]; // ペンタトニック(どう重ねても濁らない)
+const hz = (semi, base = 523.25) => base * 2 ** (semi / 12);
+
 const sfx = {
-  ok: () => tone([660, 880, 1320], 0.11),
-  ng: () => tone([220, 165], 0.2, 'sawtooth', 0.045),
-  tap: () => tone([520], 0.04, 'square', 0.025),
-  fanfare: () => tone([523, 659, 784, 1047, 1319], 0.16),
+  // 軽いタップ
+  tap: () => { note(880, { dur: 0.06, type: 'triangle', gain: 0.16, to: 1320 }); },
+  // 画面を開く・進む
+  open: () => { swish({ dur: 0.16, gain: 0.07, from: 600, to: 5000 }); note(660, { dur: 0.09, type: 'triangle', gain: 0.15 }); note(990, { at: 0.06, dur: 0.14, type: 'triangle', gain: 0.15 }); },
+  // 戻る・取り消し
+  back: () => { note(660, { dur: 0.1, type: 'triangle', gain: 0.14, to: 440 }); },
+  // 選ぶたびに音階が上がる(順番当て・線結び・文字パネル)
+  step: (n) => { const f = hz(SCALE[Math.min(SCALE.length - 1, Math.max(0, n))]); note(f, { dur: 0.13, type: 'triangle', gain: 0.2 }); note(f * 2, { dur: 0.08, type: 'sine', gain: 0.08 }); },
+  on: () => { note(784, { dur: 0.07, type: 'triangle', gain: 0.17 }); note(1175, { at: 0.04, dur: 0.1, type: 'triangle', gain: 0.15 }); },
+  off: () => { note(784, { dur: 0.09, type: 'triangle', gain: 0.13, to: 523 }); },
+  // 解答を確定した瞬間
+  decide: () => { note(196, { dur: 0.12, type: 'sine', gain: 0.3, to: 98 }); note(1568, { dur: 0.05, type: 'square', gain: 0.05 }); swish({ dur: 0.07, gain: 0.08, from: 3000, to: 9000 }); },
+  // 出題
+  question: () => { swish({ dur: 0.22, gain: 0.08, from: 400, to: 4000 }); note(1047, { at: 0.12, dur: 0.18, type: 'sine', gain: 0.12 }); note(1568, { at: 0.18, dur: 0.22, type: 'sine', gain: 0.1 }); },
+  hint: () => { note(1319, { dur: 0.1, type: 'sine', gain: 0.14 }); note(1760, { at: 0.07, dur: 0.16, type: 'sine', gain: 0.12 }); },
+  // 残り 5 秒からのカウントダウン(残りが少ないほど高い音)
+  tick: (left) => { note(left <= 2 ? 1320 : 990, { dur: 0.05, type: 'square', gain: 0.07 }); },
+  // 正解。連続正解するほどキーが上がり、きらめきが増える
+  ok: (streak = 1) => {
+    const up = Math.min(7, Math.max(0, streak - 1));
+    const base = hz(up, 659.25);
+    [0, 4, 7, 12].forEach((semi, k) => {
+      note(hz(semi, base), { at: k * 0.065, dur: 0.22, type: 'triangle', gain: 0.2 });
+      note(hz(semi + 12, base), { at: k * 0.065, dur: 0.16, type: 'sine', gain: 0.07 });
+    });
+    note(hz(16, base), { at: 0.27, dur: 0.45, type: 'sine', gain: 0.16 });
+    swish({ at: 0.24, dur: 0.4, gain: 0.05, from: 5000, to: 11000, q: 3 });
+    if (streak >= 3) [19, 24].forEach((semi, k) => note(hz(semi, base), { at: 0.36 + k * 0.07, dur: 0.3, type: 'sine', gain: 0.1 }));
+  },
+  // 不正解(耳に痛くない、柔らかい下降音)
+  ng: () => { note(311, { dur: 0.18, type: 'sawtooth', gain: 0.1, to: 233 }); note(233, { at: 0.16, dur: 0.32, type: 'sawtooth', gain: 0.1, to: 147 }); note(110, { at: 0.16, dur: 0.3, type: 'sine', gain: 0.22 }); },
+  timeup: () => { [880, 698, 523].forEach((f, k) => note(f, { at: k * 0.13, dur: 0.16, type: 'square', gain: 0.07 })); note(131, { at: 0.39, dur: 0.4, type: 'sine', gain: 0.22 }); },
+  // ラウンド開始
+  round: () => { swish({ dur: 0.3, gain: 0.1, from: 300, to: 7000 }); [0, 7, 12].forEach((semi, k) => note(hz(semi, 392), { at: 0.1 + k * 0.09, dur: 0.3, type: 'triangle', gain: 0.2 })); },
+  // 優勝・合格・昇格
+  fanfare: () => {
+    const lead = [[0, 0], [0, 0.14], [0, 0.28], [4, 0.42], [7, 0.62], [12, 0.84]];
+    lead.forEach(([semi, at]) => { note(hz(semi), { at, dur: semi === 12 ? 0.9 : 0.2, type: 'triangle', gain: 0.22 }); note(hz(semi - 12), { at, dur: 0.2, type: 'square', gain: 0.05 }); });
+    [4, 7, 16].forEach((semi) => note(hz(semi), { at: 0.84, dur: 0.9, type: 'sine', gain: 0.1 }));
+    swish({ at: 0.84, dur: 0.9, gain: 0.07, from: 4000, to: 12000, q: 2 });
+    [24, 28, 31, 36].forEach((semi, k) => note(hz(semi), { at: 1.0 + k * 0.08, dur: 0.25, type: 'sine', gain: 0.07 }));
+  },
 };
 function celebrate() {
   sfx.fanfare();
@@ -181,6 +263,7 @@ function celebrate() {
 let cleanup = null;
 let keyHandler = null;
 let sessionToken = 0;
+let streak = 0; // 連続正解数(正解音のキーが上がる)
 
 class Aborted extends Error {}
 
@@ -216,6 +299,7 @@ function guard(token) {
 
 async function runSession(fn) {
   const token = ++sessionToken;
+  streak = 0;
   try {
     await fn(token);
   } catch (e) {
@@ -256,7 +340,7 @@ function waitButton(token, button, guardMs = 0) {
 // ───────────── ホーム ─────────────
 function header(title, { back = true } = {}) {
   return h('header', { class: 'topbar' },
-    back ? h('button', { class: 'icon-btn', onclick: goHome, 'aria-label': 'ホームへ戻る' }, '←') : h('span', { class: 'icon-btn ghost' }),
+    back ? h('button', { class: 'icon-btn', onclick: () => { sfx.back(); goHome(); }, 'aria-label': 'ホームへ戻る' }, '←') : h('span', { class: 'icon-btn ghost' }),
     h('h1', null, title),
     h('button', {
       class: 'icon-btn', 'aria-label': '効果音の切り替え', 'aria-pressed': String(save.sound),
@@ -298,7 +382,7 @@ function homeScreen() {
         h('p', { class: 'hero-sub' }, `ようこそ、${save.name} さん。全 ${QUESTIONS.length} 問・8 形式で腕試し。`))),
     rankBadge(),
     h('nav', { class: 'modes' }, modes.map(([icon, title, desc, fn], i) =>
-      h('button', { class: `mode m${i}`, onclick: () => { sfx.tap(); fn(); }, 'data-autofocus': i === 0 ? true : null },
+      h('button', { class: `mode m${i}`, onclick: () => { sfx.open(); fn(); }, 'data-autofocus': i === 0 ? true : null },
         h('span', { class: 'mode-icon', 'aria-hidden': 'true' }, icon),
         h('span', { class: 'mode-text' }, h('b', null, title), h('small', null, desc))))),
     h('p', { class: 'note' },
@@ -322,6 +406,7 @@ function ask(token, p, { index, total, label, time, scoreText, rivals = [] }) {
     let elapsed = 0; // タブが裏に回っている間や確認ダイアログ表示中は進めない
     let finished = false;
     let raf = 0;
+    let lastSecs = Math.ceil(limit / 1000);
     const advance = () => {
       const now = performance.now();
       elapsed += Math.min(250, now - last);
@@ -383,6 +468,7 @@ function ask(token, p, { index, total, label, time, scoreText, rivals = [] }) {
       const ratio = timedOut ? 0 : Math.max(0, 1 - elapsed / limit);
       const correct = !timedOut && judge(p, answer);
       for (const el of body.querySelectorAll('button, input')) el.disabled = true;
+      if (!timedOut) sfx.decide();
       timer.classList.add('stopped');
       revealRivals();
       resolve({ correct, ratio, timedOut, card, body, answer, mascot });
@@ -395,7 +481,12 @@ function ask(token, p, { index, total, label, time, scoreText, rivals = [] }) {
       const r = remain / limit;
       arc.style.strokeDashoffset = String(CIRC * (1 - r));
       timer.classList.toggle('low', r < 0.25);
-      timerNum.textContent = String(Math.ceil(remain / 1000));
+      const secs = Math.ceil(remain / 1000);
+      if (secs !== lastSecs) {
+        lastSecs = secs;
+        timerNum.textContent = String(secs);
+        if (secs <= 5 && secs > 0) sfx.tick(secs);
+      }
       if (remain <= 0) return finish(null, true);
       if (p.type === 'assoc') revealHints(1 - r);
       lightUp(1 - r);
@@ -423,6 +514,7 @@ function ask(token, p, { index, total, label, time, scoreText, rivals = [] }) {
     };
     keyHandler = ui.onKey || null;
     (ui.focus || card.querySelector('#qtext')).focus({ preventScroll: true });
+    sfx.question();
     raf = requestAnimationFrame(tick);
   });
 }
@@ -460,6 +552,7 @@ function buildAnswerUI(p, finish, setHintRevealer) {
             hints[shown].textContent = p.q.hints[shown];
             hints[shown].classList.add('on');
             live.textContent = `ヒント${shown + 1}: ${p.q.hints[shown]}`;
+            sfx.hint();
             shown++;
           }
         });
@@ -488,7 +581,7 @@ function buildAnswerUI(p, finish, setHintRevealer) {
         btns[i].setAttribute('aria-pressed', String(picked.has(i)));
         btns[i].firstChild.textContent = picked.has(i) ? '☑' : '□';
         ok.disabled = picked.size === 0;
-        sfx.tap();
+        if (picked.has(i)) sfx.on(); else sfx.off();
       }
       return {
         node: h('div', null, h('p', { class: 'hint-line' }, '当てはまるものをすべて選んで「これで解答」'),
@@ -514,7 +607,7 @@ function buildAnswerUI(p, finish, setHintRevealer) {
           b.setAttribute('aria-label', `${p.options[j].text}${pos >= 0 ? `(${pos + 1} 番目に選択中)` : ''}`);
         });
         ok.disabled = seq.length !== p.options.length;
-        sfx.tap();
+        if (at >= 0) sfx.off(); else sfx.step(seq.length - 1);
       }
       return {
         node: h('div', null, h('p', { class: 'hint-line' }, '正しい順にタップ(もう一度タップで取り消し)'),
@@ -538,7 +631,7 @@ function buildAnswerUI(p, finish, setHintRevealer) {
         const next = link.findIndex((v) => v < 0);
         active = next >= 0 ? next : active;
         paint();
-        sfx.tap();
+        sfx.step(link.filter((v) => v >= 0).length - 1);
       }
       function paint() {
         lbtns.forEach((b, i) => {
@@ -582,9 +675,12 @@ function buildAnswerUI(p, finish, setHintRevealer) {
       const used = []; // 使ったタイルの index(順番どおり)
       const slots = h('div', { class: 'slots', 'aria-live': 'polite', 'aria-label': '組み立て中の文字' });
       const ok = okBtn('解答する', () => finish(used.map((i) => p.tiles[i]).join('')));
-      const tiles = p.tiles.map((ch, i) => h('button', { class: 'tile', onclick: () => { used.push(i); paint(); sfx.tap(); } }, ch));
+      const tiles = p.tiles.map((ch, i) => h('button', { class: 'tile', onclick: () => { used.push(i); paint(); } }, ch));
       const back = h('button', { class: 'btn small', onclick: () => { used.pop(); paint(); } }, '1 文字戻す');
+      let prevLen = 0;
       function paint() {
+        if (used.length > prevLen) sfx.step(used.length - 1); else if (used.length < prevLen) sfx.off();
+        prevLen = used.length;
         slots.replaceChildren(...p.tiles.map((_, k) =>
           h('span', { class: `slot ${k < used.length ? 'filled' : ''}` }, k < used.length ? p.tiles[used[k]] : '')));
         tiles.forEach((t, i) => { t.disabled = used.includes(i); });
@@ -634,11 +730,15 @@ async function feedback(token, p, res, { points, extra, nextLabel = '次へ' }) 
   markOptions(p, res);
   res.mascot.replaceChildren(owl(res.correct ? 'happy' : 'sad'));
   res.card.classList.add(res.correct ? 'is-good' : 'is-bad');
-  if (res.correct) sfx.ok(); else sfx.ng();
+  streak = res.correct ? streak + 1 : 0;
+  const combo = streak;
+  // 確定音のあとに少し間を置いて鳴らす
+  setTimeout(() => { if (token !== sessionToken) return; if (res.correct) sfx.ok(combo); else if (res.timedOut) sfx.timeup(); else sfx.ng(); }, res.timedOut ? 0 : 110);
   const next = h('button', { class: 'btn primary', 'data-autofocus': true }, nextLabel);
   const panel = h('div', { class: `result ${res.correct ? 'good' : 'bad'}`, role: 'status' },
     h('div', { class: 'result-head' },
       h('span', { class: 'result-mark' }, res.correct ? '正解!' : res.timedOut ? '時間切れ…' : '不正解…'),
+      streak >= 2 ? h('span', { class: 'combo' }, `${streak} 連続正解!`) : null,
       points !== undefined ? h('span', { class: 'result-pts' }, `+${points} 点`) : null),
     res.correct && (p.type === 'choice' || p.type === 'ox' || p.type === 'assoc') ? null
       : h('div', { class: 'answer-box' }, h('b', null, '正解'), h('ul', null, correctLines(p).map((l) => h('li', null, l)))),
@@ -650,6 +750,7 @@ async function feedback(token, p, res, { points, extra, nextLabel = '次へ' }) 
   panel.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   await waitButton(token, next, 400);
   guard(token);
+  sfx.tap();
 }
 
 // ───────────── 学院トーナメント ─────────────
@@ -700,6 +801,7 @@ async function tournament(token) {
       go));
     await waitButton(token, go, 400);
     guard(token);
+    sfx.round();
 
     const scores = new Map(players.map((pl) => [pl.id, 0]));
     for (let i = 0; i < qs.length; i++) {

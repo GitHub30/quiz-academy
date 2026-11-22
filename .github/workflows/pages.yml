@@ -24,18 +24,10 @@ jobs:
       - name: Validate questions and game logic
         run: node scripts/validate.mjs
 
-  deploy:
+  build:
     if: github.event_name != 'pull_request'
     needs: test
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      actions: read
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v7
       - name: Stamp service worker cache version
@@ -49,5 +41,17 @@ jobs:
       - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+      actions: read
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v5

@@ -34,7 +34,7 @@ export const QUESTIONS = [
   {
     id: 'd1-03', d: 1, t: 'type',
     q: 'Claude がツールの実行を求めて応答を止めたとき、stop_reason に入る値は?(半角英字とアンダースコア)',
-    a: ['tool_use'],
+    a: ['tool_use', 'tooluse', 'tool-use'],
     ex: 'stop_reason が "tool_use" のとき、tool_use ブロックのツールを実行し、結果を tool_result として返して再度リクエストします。',
   },
   {
@@ -64,11 +64,11 @@ export const QUESTIONS = [
       '同時に動く他のサブエージェントのコンテキストを共有する',
       '親のシステムプロンプトとツール結果だけを自動的に引き継ぐ',
     ],
-    ex: 'サブエージェントは独立したコンテキストで動きます。前段の調査結果や完了条件は、委譲時のプロンプトに含める必要があります。',
+    ex: '通常のサブエージェントは独立したコンテキストで動きます(親の会話を引き継ぐ「フォーク」は例外)。前段の調査結果や完了条件は、委譲時のプロンプトに含める必要があります。',
   },
   {
     id: 'd1-07', d: 1, t: 'ox',
-    q: 'サブエージェントは、コーディネーターがそれまでに得た検索結果を特に何もしなくても参照できる。',
+    q: '通常のサブエージェントは、コーディネーターがそれまでに得た検索結果を特に何もしなくても参照できる。',
     a: false,
     ex: 'コンテキストは分離されています。コーディネーターが必要な結果を委譲プロンプトに含めて渡します。',
   },
@@ -217,9 +217,9 @@ export const QUESTIONS = [
   },
   {
     id: 'd1-23', d: 1, t: 'choice',
-    q: 'Claude Agent SDK でエージェントに使わせるツールを絞り込むためのオプションは?',
+    q: 'Claude Agent SDK で、列挙したツールを承認の確認なしで実行できるよう事前に許可するオプションは?',
     c: ['allowedTools', 'maxTokens', 'stopSequences', 'cacheControl'],
-    ex: 'allowedTools(Python では allowed_tools)に許可するツール名を列挙します。役割に必要な最小限のツールだけを与えるのが基本です。',
+    ex: 'allowedTools(Python では allowed_tools)は列挙したツールを自動承認します。列挙しなかったツールが消えるわけではないので、使わせたくないツールは disallowedTools で外します。',
   },
 
   // ───────────── ドメイン2: ツール設計と MCP 統合 ─────────────
@@ -249,12 +249,12 @@ export const QUESTIONS = [
       ['tool', '名前で指定した特定のツールを必ず呼び出す'],
       ['none', 'ツールを呼び出さない'],
     ],
-    ex: '定義は上のとおりです。なお Claude Opus 5.5 / Sonnet 5.5 / Fable 5.1 以降など新しいモデルでは any と tool(強制呼び出し)が 400 エラーになるため、auto と strict: true、または構造化出力を使います。',
+    ex: '定義は上のとおりです。なお Claude Fable 5.1 / 5.2、Opus 5.5、Sonnet 5.5 など新しいモデルでは any と tool(強制呼び出し)が 400 エラーになるため、auto と strict: true、または構造化出力を使います。',
   },
   {
     id: 'd2-04', d: 2, t: 'type',
     q: 'ツールの実行が失敗したことをモデルに伝えるために、tool_result ブロックで true にするフィールド名は?',
-    a: ['is_error', 'iserror'],
+    a: ['is_error', 'iserror', 'is-error'],
     ex: 'tool_result に is_error: true を付け、content に原因を書いて返します。失敗した呼び出しを黙って捨ててはいけません。(MCP のツール結果では isError)',
   },
   {
@@ -288,7 +288,7 @@ export const QUESTIONS = [
   {
     id: 'd2-08', d: 2, t: 'type',
     q: 'リポジトリにコミットしてチームで共有する、プロジェクトスコープの MCP サーバー設定ファイルの名前は?',
-    a: ['.mcp.json', 'mcp.json'],
+    a: ['.mcp.json', 'mcp.json', './.mcp.json'],
     ex: 'プロジェクトルートの .mcp.json に書いた MCP サーバーは、リポジトリを使う全員で共有されます。',
   },
   {
@@ -298,9 +298,9 @@ export const QUESTIONS = [
       ['Tools', 'モデルが呼び出して実行する関数'],
       ['Resources', '読み取り用に公開されるデータやコンテンツ'],
       ['Prompts', '再利用できるプロンプトのテンプレート'],
-      ['Sampling', 'サーバーがクライアント経由で LLM の生成を依頼する'],
+      ['Elicitation', 'サーバーがユーザーに追加の情報を求める'],
     ],
-    ex: 'Tools / Resources / Prompts はサーバーが提供する 3 つの基本機能、Sampling はクライアント側が提供する機能です。',
+    ex: 'Tools / Resources / Prompts はサーバーが提供する 3 つの基本機能、Elicitation はクライアント側が提供する機能です。(Sampling は 2026-07-28 版の仕様で非推奨になりました)',
   },
   {
     id: 'd2-10', d: 2, t: 'choice',
@@ -330,12 +330,12 @@ export const QUESTIONS = [
     id: 'd2-13', d: 2, t: 'choice',
     q: '自分だけで試している実験的な MCP サーバーを Claude Code に登録したい。チームには影響させたくない。どこに設定する?',
     c: [
-      'ユーザースコープの設定(~/.claude.json)',
+      'ローカルまたはユーザースコープの設定(~/.claude.json に保存され、共有されない)',
       'リポジトリ直下の .mcp.json',
       'プロジェクトの CLAUDE.md',
       '.github/workflows/ の YAML',
     ],
-    ex: '個人用・実験用はユーザースコープに、チームで共有するものはプロジェクトの .mcp.json に置きます。',
+    ex: '個人用・実験用は既定のローカルスコープ(そのプロジェクトだけ)か、全プロジェクトで使うならユーザースコープに。チームで共有するものはプロジェクトの .mcp.json に置きます。',
   },
   {
     id: 'd2-14', d: 2, t: 'match',
@@ -346,7 +346,7 @@ export const QUESTIONS = [
       ['Read', 'ファイルの内容を読み込む'],
       ['Edit', '文字列の置換でファイルを部分的に書き換える'],
     ],
-    ex: '「名前で探すなら Glob、中身で探すなら Grep」が使い分けの基本です。',
+    ex: '「名前で探すなら Glob、中身で探すなら Grep」が使い分けの基本です。(最近の版では環境によって既定で無効になっており、Bash 経由の find / grep が使われることもあります)',
   },
   {
     id: 'd2-15', d: 2, t: 'assoc',
@@ -376,7 +376,7 @@ export const QUESTIONS = [
       'ツールの実行結果が自動で検証される',
       'ツールの実行がサーバー側で行われる',
     ],
-    ex: 'strict: true は tool_use.input のスキーマ適合を保証します。スキーマ側は additionalProperties: false と required が必要です。呼ぶかどうかを制御するものではありません。',
+    ex: 'strict: true は tool_use.input のスキーマ適合を保証します。スキーマ側は各オブジェクトに additionalProperties: false が必要です。呼ぶかどうかを制御するものではありません。',
   },
   {
     id: 'd2-19', d: 2, t: 'choice',
@@ -438,8 +438,8 @@ export const QUESTIONS = [
   },
   {
     id: 'd3-03', d: 3, t: 'type',
-    q: 'Claude Code を対話なし(ヘッドレス)で実行するための短いフラグは?(ハイフンを含めて入力)',
-    a: ['-p', '--print'],
+    q: 'Claude Code を対話なし(ヘッドレス)で実行するためのフラグは?(ハイフンを含めて入力)',
+    a: ['-p', '--print', 'claude -p', 'claude --print', '-print'],
     ex: 'claude -p "..."(--print)で非対話モードになり、結果を標準出力に出して終了します。CI やスクリプトから使う基本形です。',
   },
   {
@@ -516,9 +516,9 @@ export const QUESTIONS = [
   },
   {
     id: 'd3-11', d: 3, t: 'choice',
-    q: 'あるスキルの実行中に使えるツールを限定したい。SKILL.md のフロントマターで使う項目は?',
+    q: 'あるスキルの実行中、特定のツールを承認の確認なしで使えるようにしたい。SKILL.md のフロントマターで使う項目は?',
     c: ['allowed-tools', 'argument-hint', 'description', 'name'],
-    ex: 'allowed-tools でスキル実行中に許可するツールを絞れます。argument-hint は引数の入力ヒントです。',
+    ex: 'allowed-tools は列挙したツールを事前に承認します。使えるツールを制限するものではない点に注意します(特定のツールを外すのは disallowed-tools)。',
   },
   {
     id: 'd3-12', d: 3, t: 'match',
@@ -557,7 +557,7 @@ export const QUESTIONS = [
       '英語に翻訳して文字数を減らす',
       'CLAUDE.md を削除し、毎回チャットで説明する',
     ],
-    ex: 'CLAUDE.md は @path/to/file で他のファイルをインポートできます。トピック別のルールは .claude/rules/ に分けると保守しやすくなります。',
+    ex: 'CLAUDE.md は @path/to/file で他のファイルをインポートできます。インポートは整理には役立ちますがコンテキストの消費は減りません。paths で対象を絞ったルールなら、必要なときだけ読み込まれます。',
   },
   {
     id: 'd3-16', d: 3, t: 'choice',
@@ -595,9 +595,9 @@ export const QUESTIONS = [
   },
   {
     id: 'd3-19', d: 3, t: 'ox',
-    q: 'CI 上で動かす Claude Code にも、プロジェクトの CLAUDE.md でテスト方針やレビュー基準を伝えられる。',
+    q: 'CI 上で claude -p を(--bare を付けずに)実行する場合、プロジェクトの CLAUDE.md でテスト方針やレビュー基準を伝えられる。',
     a: true,
-    ex: 'ヘッドレス実行でもプロジェクトの CLAUDE.md は読み込まれます。CI 用の基準もここに書けます。',
+    ex: 'ヘッドレス実行でもプロジェクトの CLAUDE.md は読み込まれます。ただし --bare を付けると読み込まれないため、その場合は --append-system-prompt などで渡します。',
   },
   {
     id: 'd3-20', d: 3, t: 'choice',
@@ -643,7 +643,7 @@ export const QUESTIONS = [
       '出力形式を JSON からテキストに変える',
       'モデルの出力上限を下げる',
     ],
-    ex: 'ヘッドレス実行は毎回新しいコンテキストです。前回の結果は自分で渡さない限り知りません。',
+    ex: 'ヘッドレス実行は(--continue / --resume を使わない限り)毎回新しいコンテキストです。前回の結果は自分で渡さない限り知りません。',
   },
 
   // ───────────── ドメイン4: プロンプトエンジニアリングと構造化出力 ─────────────
@@ -690,12 +690,12 @@ export const QUESTIONS = [
     id: 'd4-05', d: 4, t: 'choice',
     q: '指示を詳しく書いても、出力の形式や判断の粒度が実行ごとにばらつく。最も効果が期待できる手法は?',
     c: [
-      '代表的なケースと紛らわしいケースを含む few-shot 例を 2〜4 個示す',
+      '代表的なケースと紛らわしいケースを含む few-shot 例を数個示す',
       '指示文をさらに長くして同じことを繰り返す',
       '「一貫性を保つこと」と一文加える',
       'リクエストを 2 回送って多数決を取る',
     ],
-    ex: '具体例は、文章による説明よりも形式と判断基準を確実に伝えます。紛らわしいケースを例に含めると汎化しやすくなります。',
+    ex: '具体例は、文章による説明よりも形式と判断基準を確実に伝えます。公式ドキュメントの目安は 3〜5 個です。紛らわしいケースを例に含めると汎化しやすくなります。',
   },
   {
     id: 'd4-06', d: 4, t: 'choice',
@@ -751,7 +751,7 @@ export const QUESTIONS = [
   {
     id: 'd4-11', d: 4, t: 'type',
     q: 'Message Batches API で、各リクエストと結果を対応づけるために自分で付けるフィールド名は?',
-    a: ['custom_id', 'customid'],
+    a: ['custom_id', 'customid', 'custom-id'],
     ex: '各リクエストに一意の custom_id を付け、結果はそれをキーに突き合わせます。',
   },
   {
@@ -785,7 +785,7 @@ export const QUESTIONS = [
   {
     id: 'd4-15', d: 4, t: 'assoc',
     q: 'ヒントから連想されるものを選べ。',
-    hints: ['2〜4 個ほどが目安', '紛らわしいケースの扱いを示せる', '出力形式のばらつきを抑える', '入力と望ましい出力の「例」を見せる'],
+    hints: ['3〜5 個ほどが目安', '紛らわしいケースの扱いを示せる', '出力形式のばらつきを抑える', '入力と望ましい出力の「例」を見せる'],
     c: ['few-shot プロンプティング', 'プロンプトキャッシュ', 'コンパクション', 'ルーティング'],
     ex: 'few-shot(少数例)プロンプティングは、形式と判断基準の一貫性を高める代表的な手法です。',
   },
@@ -924,7 +924,7 @@ export const QUESTIONS = [
   {
     id: 'd5-07', d: 5, t: 'type',
     q: 'キャッシュから読まれたトークン数が入る、usage のフィールド名は?',
-    a: ['cache_read_input_tokens'],
+    a: ['cache_read_input_tokens', 'cachereadinputtokens', 'usage.cache_read_input_tokens', 'cache-read-input-tokens'],
     ex: '繰り返しリクエストしても cache_read_input_tokens が 0 のままなら、プレフィックスを変えている原因がどこかにあります。',
   },
   {
@@ -936,7 +936,7 @@ export const QUESTIONS = [
       '二度と再試行しない',
       'リクエストを 10 並列にして確率を上げる',
     ],
-    ex: '待ち時間を倍々に延ばし、ゆらぎ(ジッター)を加えて再試行の集中を避けます。',
+    ex: '待ち時間を倍々に延ばし、ゆらぎ(ジッター)を加えて再試行の集中を避けます。(利用上限に達したことによる 429 は、再試行では解消しません)',
   },
   {
     id: 'd5-09', d: 5, t: 'choice',

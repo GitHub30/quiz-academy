@@ -1,0 +1,19 @@
+{
+  "name": "Quiz Academy — Claude 認定 対策クイズ学院",
+  "short_name": "Quiz Academy",
+  "description": "Claude 認定の出題分野をクイズとトーナメントで学ぶ非公式の学習ゲーム",
+  "lang": "ja",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#141230",
+  "theme_color": "#141230",
+  "categories": ["education", "games"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
